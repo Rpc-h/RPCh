@@ -54,6 +54,7 @@ FROM --platform=linux/amd64 node:16-alpine AS runner
 
 WORKDIR /app
 
+RUN mkdir /app/db
 # set volume which can be mapped by users on the host system
 VOLUME ["/app/db"]
 
@@ -66,6 +67,12 @@ RUN  curl https://raw.githubusercontent.com/eficode/wait-for/v2.2.3/wait-for > /
 
 COPY --from=installer /app/apps/exit-node/package.json .
 COPY --from=installer /app .
+
+# switch to normal user, to prevent dangerous root access
+RUN chown -R node:node .
+
+# finally set the non-root user so the process also run un-privilidged
+USER node
 
 CMD ["node", "apps/exit-node/build/index.js"]
 

@@ -46,6 +46,12 @@ COPY --from=installer /app .
 COPY apps/funding-platform/src/blockchain/erc20-fixture.json /app/apps/funding-platform/build/blockchain
 COPY apps/funding-platform/dump.sql /app/
 
+# switch to normal user, to prevent dangerous root access
+RUN chown -R node:node .
+
+# finally set the non-root user so the process also run un-privilidged
+USER node
+
 CMD ["node", "apps/funding-platform/build/index.js"]
 
 ENTRYPOINT ["/sbin/tini", "--"]

@@ -18,7 +18,7 @@ const {
   // Postgres db connection url
   DB_CONNECTION_URL,
   // Port that server will listen for requests
-  PORT = 3000,
+  PORT = 3010,
   // Number of confirmations that will be required for a transaction to be accepted
   CONFIRMATIONS = 1,
   // Max amount of tokens a access token can request
@@ -95,7 +95,9 @@ const main = () => {
   const pgInstance = pgp();
   const connectionString: string = DB_CONNECTION_URL;
   // create table if the table does not exist
-  const dbInstance = pgInstance({ connectionString });
+  const dbInstance = pgInstance({
+    connectionString,
+  });
 
   start({
     entryServer: api,

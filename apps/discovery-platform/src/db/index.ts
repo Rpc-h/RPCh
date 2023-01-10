@@ -1,8 +1,11 @@
 import { CreateQuota, QueryQuota } from "../quota/dto";
 import type { QueryRegisteredNode } from "../registered-node/dto";
 import pgp from "pg-promise";
+import { createLogger } from "../utils";
 
 export type DBInstance = pgp.IDatabase<{}>;
+
+const log = createLogger(["db"]);
 
 const TABLES = {
   REGISTERED_NODES: "registered_nodes",
@@ -36,24 +39,29 @@ export const getNonExitNodes = async (
 
 export const saveRegisteredNode = async (
   dbInstance: DBInstance,
-  node: QueryRegisteredNode
+  node: Omit<QueryRegisteredNode, "created_at" | "updated_at">
 ): Promise<boolean> => {
   try {
     const text = `INSERT INTO 
-    ${TABLES.REGISTERED_NODES} (has_exit_node, id, chain_id, total_amount_funded, honesty_score, status)
-    VALUES ($<has_exit_node>, $<id>, $<chain_id>, $<total_amount_funded>, $<honesty_score>, $<status>)
+    ${TABLES.REGISTERED_NODES} (has_exit_node, id, chain_id, hoprd_api_endpoint, hoprd_api_port, exit_node_pub_key, total_amount_funded, honesty_score, status)
+    VALUES ($<has_exit_node>, $<id>, $<chain_id>, $<hoprd_api_endpoint>, $<hoprd_api_port>, $<exit_node_pub_key>, $<total_amount_funded>, $<honesty_score>, $<status>)
     RETURNING *`;
-    const values = {
+    const values: Omit<QueryRegisteredNode, "created_at" | "updated_at"> = {
       has_exit_node: node.has_exit_node,
       id: node.id,
       chain_id: node.chain_id,
+      hoprd_api_endpoint: node.hoprd_api_endpoint,
+      hoprd_api_port: node.hoprd_api_port,
+      exit_node_pub_key: node.exit_node_pub_key,
       total_amount_funded: node.total_amount_funded,
       honesty_score: node.honesty_score,
       status: node.status,
     };
-    const dbRes = (await dbInstance.one(text, values)) as QueryRegisteredNode;
+    const dbRes = await dbInstance.one<QueryRegisteredNode>(text, values);
+    log.verbose("Response from DB", dbRes);
     return dbRes ? true : false;
   } catch (e) {
+    log.error(e);
     return false;
   }
 };
@@ -96,6 +104,7 @@ export const updateRegisteredNode = async (
     const dbRes = (await dbInstance.one(text, values)) as QueryRegisteredNode;
     return dbRes ? true : false;
   } catch (e) {
+    log.error(e);
     return false;
   }
 };

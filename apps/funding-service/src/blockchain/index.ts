@@ -1,6 +1,8 @@
 import { ethers, Signer, Wallet, Contract } from "ethers";
-import { validChainIds } from "../utils";
+import { createLogger, validChainIds } from "../utils";
 import * as erc20 from "./erc20-fixture.json";
+
+const log = createLogger(["blockchain"]);
 
 /**
  * Blockchain functions, anything to do with interactions on chain is handled here
@@ -40,7 +42,7 @@ export const sendTransaction = async (params: {
 export const getProvider = async (chainId: number) => {
   if (!validChainIds.has(chainId)) throw new Error("Chain not supported");
   const provider = new ethers.providers.JsonRpcProvider(
-    validChainIds.get(chainId)
+    validChainIds.get(chainId)?.url
   );
   return provider;
 };
@@ -50,10 +52,13 @@ export const getProvider = async (chainId: number) => {
  * @param chainIds number[]
  */
 export const getProviders = async (chainIds: number[]) => {
+  log.verbose("fetching providers", chainIds);
   const providers = [];
   for (const chainId of chainIds) {
     const provider = await getProvider(chainId);
+    await provider.ready;
     providers.push(provider);
+    log.verbose("found provider", JSON.stringify(provider));
   }
   return providers;
 };
@@ -110,6 +115,7 @@ export const getBalanceForAllChains = async (
 ) => {
   const balances: { [chainId: number]: number } = {};
   for (const provider of providers) {
+    log.verbose(["fetching balance for provider", provider.connection.url]);
     const balance = await getBalance(
       smartContractAddresses[provider.network.chainId],
       walletAddress,

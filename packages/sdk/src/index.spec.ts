@@ -2,19 +2,16 @@ import assert from "assert";
 import { Request } from "@rpch/common";
 import * as fixtures from "@rpch/common/build/fixtures";
 import nock from "nock";
-import SDK, { type HoprSdkTempOps } from "./index";
+import SDK, { type HoprSdkOps } from "./index";
 
 const TIMEOUT = 5e3;
 const DISCOVERY_PLATFORM_API_ENDPOINT = "http://discovery_platform";
 const ENTRY_NODE_API_ENDPOINT = "http://entry_node";
+const ENTRY_NODE_API_PORT = "1337";
 const ENTRY_NODE_API_TOKEN = "12345";
 const ENTRY_NODE_PEER_ID = fixtures.HOPRD_PEER_ID_A;
 const EXIT_NODE_PEER_ID = fixtures.EXIT_NODE_HOPRD_PEER_ID_A;
 const EXIT_NODE_PUB_KEY = fixtures.EXIT_NODE_PUB_KEY_A;
-const FRESH_NODE_THRESHOLD = 20;
-const MAX_RESPONSES = 100;
-
-type MockOps = HoprSdkTempOps & { timeout: number };
 
 jest.mock("@rpch/common", () => ({
   ...jest.requireActual("@rpch/common"),
@@ -33,10 +30,10 @@ jest.mock("@rpch/common", () => ({
 }));
 
 const createSdkMock = (
-  overwriteOps?: Partial<MockOps>
+  overwriteOps?: Partial<HoprSdkOps>
 ): {
   sdk: SDK;
-  ops: MockOps;
+  ops: HoprSdkOps;
 } => {
   const store = fixtures.createAsyncKeyValStore();
 
@@ -44,22 +41,34 @@ const createSdkMock = (
     .nockSendMessageApi(nock(ENTRY_NODE_API_ENDPOINT).persist(true))
     .reply(202, "someresponse");
 
-  const ops: MockOps = {
+  nock(DISCOVERY_PLATFORM_API_ENDPOINT)
+    .post("/api/request/entry-node")
+    .reply(200, {
+      hoprd_api_endpoint: ENTRY_NODE_API_ENDPOINT,
+      hoprd_api_port: ENTRY_NODE_API_PORT,
+      accessToken: ENTRY_NODE_API_TOKEN,
+      id: ENTRY_NODE_PEER_ID,
+    })
+    .persist(true);
+
+  nock(DISCOVERY_PLATFORM_API_ENDPOINT)
+    .get("/api/node?hasExitNode=true")
+    .reply(200, [
+      {
+        exit_node_pub_key: EXIT_NODE_PUB_KEY,
+        id: EXIT_NODE_PEER_ID,
+      },
+    ])
+    .persist(true);
+
+  const ops: HoprSdkOps = {
     timeout: overwriteOps?.timeout ?? TIMEOUT,
     discoveryPlatformApiEndpoint:
       overwriteOps?.discoveryPlatformApiEndpoint ??
       DISCOVERY_PLATFORM_API_ENDPOINT,
-    entryNodeApiEndpoint:
-      overwriteOps?.entryNodeApiEndpoint ?? ENTRY_NODE_API_ENDPOINT,
-    entryNodeApiToken: overwriteOps?.entryNodeApiToken ?? ENTRY_NODE_API_TOKEN,
-    entryNodePeerId: overwriteOps?.entryNodePeerId ?? ENTRY_NODE_PEER_ID,
-    exitNodePeerId: overwriteOps?.exitNodePeerId ?? EXIT_NODE_PEER_ID,
-    exitNodePubKey: overwriteOps?.exitNodePubKey ?? EXIT_NODE_PUB_KEY,
-    freshNodeThreshold: FRESH_NODE_THRESHOLD,
-    maxResponses: MAX_RESPONSES,
   };
 
-  const sdk = new SDK(ops.timeout, ops, store.set, store.get);
+  const sdk = new SDK(ops, store.set, store.get);
 
   return { sdk, ops };
 };
@@ -88,7 +97,7 @@ describe("test SDK class", function () {
   });
 
   describe("started", function () {
-    let ops: MockOps;
+    let ops: HoprSdkOps;
     let sdk: SDK;
 
     beforeEach(async function () {
@@ -108,7 +117,7 @@ describe("test SDK class", function () {
         fixtures.RPC_REQ_LARGE
       );
       assert(request instanceof Request);
-      assert.equal(request.entryNodeDestination, ops.entryNodePeerId);
+      assert.equal(request.entryNodeDestination, ENTRY_NODE_PEER_ID);
       assert.equal(request.provider, fixtures.PROVIDER);
       assert.equal(request.body, fixtures.RPC_REQ_LARGE);
     });

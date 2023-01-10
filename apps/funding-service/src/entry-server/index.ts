@@ -2,11 +2,12 @@ import express from "express";
 import { AccessTokenService } from "../access-token";
 import { getBalanceForAllChains, getProviders } from "../blockchain";
 import { RequestService } from "../request";
-import { smartContractAddresses, validChainIds } from "../utils";
+import { createLogger, smartContractAddresses, validChainIds } from "../utils";
 import { tokenIsValid } from "./middleware";
 import { body, validationResult, param } from "express-validator";
 
 const app = express();
+const log = createLogger(["entry-server"]);
 
 /**
  * Express server that holds all routes
@@ -120,6 +121,7 @@ export const entryServer = (ops: {
       ops.maxAmountOfTokens
     ),
     async (req, res) => {
+      log.verbose(["getting funds for chains", [...validChainIds.keys()]]);
       const providers = await getProviders(Array.from(validChainIds.keys()));
       const balances = await getBalanceForAllChains(
         smartContractAddresses,

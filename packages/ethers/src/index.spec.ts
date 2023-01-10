@@ -6,15 +6,15 @@ import * as crypto from "@rpch/crypto/nodejs";
 import { RPChProvider } from ".";
 
 const PROVIDER_URL = fixtures.PROVIDER;
+const TIMEOUT = 5e3;
 const DISCOVERY_PLATFORM_API_ENDPOINT = "http://discovery_platform";
 const ENTRY_NODE_API_ENDPOINT = "http://entry_node";
+const ENTRY_NODE_API_PORT = "1337";
 const ENTRY_NODE_API_TOKEN = "12345";
-const ENTRY_NODE_DESTINATION = fixtures.HOPRD_PEER_ID_A;
-const EXIT_NODE_DESTINATION = fixtures.EXIT_NODE_HOPRD_PEER_ID_A;
+const ENTRY_NODE_PEER_ID = fixtures.HOPRD_PEER_ID_A;
+const EXIT_NODE_PEER_ID = fixtures.EXIT_NODE_HOPRD_PEER_ID_A;
 const EXIT_NODE_PUB_KEY = fixtures.EXIT_NODE_PUB_KEY_A;
 const EXIT_NODE_WRITE_IDENTITY = fixtures.EXIT_NODE_WRITE_IDENTITY_A;
-const FRESH_NODE_THRESHOLD = 20;
-const MAX_RESPONSES = 100;
 
 const sdkStore = fixtures.createAsyncKeyValStore();
 const exitNodeStore = fixtures.createAsyncKeyValStore();
@@ -36,7 +36,7 @@ const getMockedResponse = async (request: Request): Promise<Message> => {
   const exitNodeRequest = Request.fromMessage(
     crypto,
     request.toMessage(),
-    EXIT_NODE_DESTINATION,
+    EXIT_NODE_PEER_ID,
     EXIT_NODE_WRITE_IDENTITY,
     counter,
     (clientId: string, counter: bigint) => {
@@ -65,18 +65,36 @@ jest.mock("@rpch/common", () => ({
 }));
 
 describe("test index.ts", function () {
+  // pseudo responses from entry node
+  fixtures
+    .nockSendMessageApi(nock(ENTRY_NODE_API_ENDPOINT).persist())
+    .reply(202, "someresponse");
+
+  nock(DISCOVERY_PLATFORM_API_ENDPOINT)
+    .post("/api/request/entry-node")
+    .reply(200, {
+      hoprd_api_endpoint: ENTRY_NODE_API_ENDPOINT,
+      hoprd_api_port: ENTRY_NODE_API_PORT,
+      accessToken: ENTRY_NODE_API_TOKEN,
+      id: ENTRY_NODE_PEER_ID,
+    })
+    .persist();
+
+  nock(DISCOVERY_PLATFORM_API_ENDPOINT)
+    .get("/api/node?hasExitNode=true")
+    .reply(200, [
+      {
+        exit_node_pub_key: EXIT_NODE_PUB_KEY,
+        id: EXIT_NODE_PEER_ID,
+      },
+    ])
+    .persist();
+
   const provider = new RPChProvider(
     PROVIDER_URL,
-    5e3,
     {
+      timeout: TIMEOUT,
       discoveryPlatformApiEndpoint: DISCOVERY_PLATFORM_API_ENDPOINT,
-      entryNodeApiEndpoint: ENTRY_NODE_API_ENDPOINT,
-      entryNodeApiToken: ENTRY_NODE_API_TOKEN,
-      entryNodePeerId: ENTRY_NODE_DESTINATION,
-      exitNodePeerId: EXIT_NODE_DESTINATION,
-      exitNodePubKey: EXIT_NODE_PUB_KEY,
-      freshNodeThreshold: FRESH_NODE_THRESHOLD,
-      maxResponses: MAX_RESPONSES,
     },
     sdkStore.set,
     sdkStore.get
@@ -84,11 +102,6 @@ describe("test index.ts", function () {
 
   beforeAll(async function () {
     await provider.sdk.start();
-
-    // pseudo responses from entry node
-    fixtures
-      .nockSendMessageApi(nock(ENTRY_NODE_API_ENDPOINT).persist())
-      .reply(202, "someresponse");
   });
 
   afterAll(async function () {
@@ -98,7 +111,6 @@ describe("test index.ts", function () {
   // hook to emulate responses from the exit node
   const originalSendRequest = provider.sdk.sendRequest.bind(provider.sdk);
   provider.sdk.sendRequest = async (request: Request): Promise<Response> => {
-    const now = Date.now();
     setTimeout(() => {
       getMockedResponse(request).then((responseMessage) => {
         // @ts-ignore

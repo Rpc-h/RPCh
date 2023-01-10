@@ -5,11 +5,13 @@ version: "3"
 
 volumes:
   # hoprd node identity files
-  pluto-data:
-  # exit node identity files
+  pluto-data: # exit node identity files
+
   exit-node-data:
 
-x-exit-service: &exit
+
+x-exit-service:
+  &exit
   build:
     dockerfile: apps/exit-node/Dockerfile
     context: ../../../
@@ -50,7 +52,7 @@ services:
         "300",
         "--",
         "/sbin/tini",
-        "--",
+        "--"
       ]
   exit-2:
     <<: *exit
@@ -67,7 +69,7 @@ services:
         "300",
         "--",
         "/sbin/tini",
-        "--",
+        "--"
       ]
   exit-3:
     <<: *exit
@@ -84,7 +86,7 @@ services:
         "300",
         "--",
         "/sbin/tini",
-        "--",
+        "--"
       ]
   exit-4:
     <<: *exit
@@ -101,7 +103,7 @@ services:
         "300",
         "--",
         "/sbin/tini",
-        "--",
+        "--"
       ]
   exit-5:
     <<: *exit
@@ -118,5 +120,5 @@ services:
         "300",
         "--",
         "/sbin/tini",
-        "--",
+        "--"
       ]

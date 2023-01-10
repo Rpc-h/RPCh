@@ -47,6 +47,7 @@ RUN  curl https://raw.githubusercontent.com/eficode/wait-for/v2.2.3/wait-for > /
 
 COPY --from=installer /app/apps/discovery-platform/package.json .
 COPY --from=installer /app .
+COPY apps/discovery-platform/dump.sql /app/
 
 ENV NODE_ENV=production
 

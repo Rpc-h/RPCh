@@ -1,10 +1,13 @@
 import { CreateAccessToken, QueryAccessToken } from "../access-token";
 import { CreateRequest, QueryRequest, UpdateRequest } from "../request";
 import pgp from "pg-promise";
+import { createLogger } from "../utils";
 
 /**
  * DB module that handles the formatting of queries and executing them
  */
+
+const log = createLogger(["db"]);
 
 export type DBInstance = pgp.IDatabase<{}>;
 

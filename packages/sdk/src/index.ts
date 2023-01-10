@@ -8,26 +8,22 @@ import {
   Segment,
   hoprd,
 } from "@rpch/common";
-import { Identity } from "@rpch/crypto-bridge/nodejs";
 import { utils as etherUtils } from "ethers";
+import fetch from "cross-fetch";
 import ReliabilityScore from "./reliability-score";
 import RequestCache from "./request-cache";
 import { createLogger } from "./utils";
 
 const log = createLogger();
+
 /**
- * Temporary options to be passed to
- * the SDK for development purposes.
+ * HOPR SDK options.
  */
-export type HoprSdkTempOps = {
+export type HoprSdkOps = {
+  timeout: number;
   discoveryPlatformApiEndpoint: string;
-  entryNodeApiEndpoint: string;
-  entryNodeApiToken: string;
-  entryNodePeerId: string;
-  exitNodePeerId: string;
-  exitNodePubKey: string;
-  freshNodeThreshold: number;
-  maxResponses: number;
+  reliabilityScoreFreshNodeThreshold?: number;
+  reliabilityScoreMaxResponses?: number;
 };
 
 /**
@@ -40,6 +36,14 @@ export type EntryNode = {
 };
 
 /**
+ * Exit Node details
+ */
+export type ExitNode = {
+  peerId: string;
+  pubKey: string;
+};
+
+/**
  * Send traffic through the RPCh network
  */
 export default class SDK {
@@ -49,32 +53,26 @@ export default class SDK {
   private segmentCache: SegmentCache;
   private requestCache: RequestCache;
   private reliabilityScore: ReliabilityScore;
-  // this will be static but right now passed via tempOps
-  private discoveryPlatformApiEndpoint: string;
-  // available exit nodes
-  private exitNodes: { destination: string; pubKey: string }[] = [];
   // selected entry node
   private entryNode?: EntryNode;
-  // selected exit node
-  private exitNodePeerId?: string;
-  private exitNodePubKey?: string;
+  // available exit nodes
+  private exitNodes: ExitNode[] = [];
+  private exitNode?: ExitNode;
   // stopMessageListener
   private stopMessageListener?: () => void;
 
   constructor(
-    private readonly timeout: number,
-    private readonly tempOps: HoprSdkTempOps,
+    private readonly ops: HoprSdkOps,
     private setKeyVal: (key: string, val: string) => Promise<any>,
     private getKeyVal: (key: string) => Promise<string | undefined>
   ) {
-    this.discoveryPlatformApiEndpoint = tempOps.discoveryPlatformApiEndpoint;
     this.segmentCache = new SegmentCache((message) => this.onMessage(message));
     this.requestCache = new RequestCache((request) =>
       this.onRequestRemoval(request)
     );
     this.reliabilityScore = new ReliabilityScore(
-      tempOps.freshNodeThreshold,
-      tempOps.maxResponses
+      ops.reliabilityScoreFreshNodeThreshold || 20,
+      ops.reliabilityScoreMaxResponses || 100
     );
   }
 
@@ -82,9 +80,7 @@ export default class SDK {
    * @return true if SDK is ready to send requests
    */
   public get isReady(): boolean {
-    return (
-      !!this.entryNode && this.exitNodes.length > 0 && !!this.exitNodePeerId
-    );
+    return !!this.entryNode && this.exitNodes.length > 0 && !!this.exitNode;
   }
 
   /**
@@ -97,13 +93,38 @@ export default class SDK {
     apiToken: string;
     peerId: string;
   }> {
-    // requests access to an entry node
-    // response gives entry node details back
+    log.verbose("Selecting entry node");
+    const response: {
+      hoprd_api_endpoint: string;
+      hoprd_api_port: string;
+      accessToken: string;
+      id: string;
+    } = await fetch(
+      new URL(
+        "/api/request/entry-node",
+        discoveryPlatformApiEndpoint
+      ).toString(),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept-Content": "application/json",
+        },
+        body: JSON.stringify({
+          client: "BW",
+        }),
+      }
+    ).then((res) => res.json());
+
+    const apiEndpointUrl = new URL(response.hoprd_api_endpoint);
+    apiEndpointUrl.port = response.hoprd_api_port;
+
     this.entryNode = {
-      apiEndpoint: this.tempOps.entryNodeApiEndpoint,
-      apiToken: this.tempOps.entryNodeApiToken,
-      peerId: this.tempOps.entryNodePeerId,
+      apiEndpoint: apiEndpointUrl.toString(),
+      apiToken: response.accessToken,
+      peerId: response.id,
     };
+    log.verbose("Selected entry node", this.entryNode);
     return this.entryNode;
   }
 
@@ -114,18 +135,28 @@ export default class SDK {
    */
   private async selectExitNode(
     discoveryPlatformApiEndpoint: string
-  ): Promise<{ destination: string; pubKey: string }[]> {
-    // requests the list of exit nodes (sometimes hit cache)
-    // response gives back list of exit nodes
-    // select exit node at random
-    this.exitNodes = [
-      {
-        destination: this.tempOps.exitNodePeerId,
-        pubKey: this.tempOps.exitNodePubKey,
-      },
-    ];
-    this.exitNodePeerId = this.tempOps.exitNodePeerId;
-    this.exitNodePubKey = this.tempOps.exitNodePubKey;
+  ): Promise<ExitNode[]> {
+    log.verbose("Selecting exit node");
+    const response: {
+      exit_node_pub_key: string;
+      id: string;
+    }[] = await fetch(
+      new URL(
+        "/api/node?hasExitNode=true",
+        discoveryPlatformApiEndpoint
+      ).toString()
+    ).then((res) => res.json());
+
+    this.exitNodes = response.map((item) => ({
+      peerId: item.id,
+      pubKey: item.exit_node_pub_key,
+    }));
+
+    if (this.exitNodes.length === 0) throw Error("No exit nodes available");
+
+    this.exitNode =
+      this.exitNodes[Math.floor(Math.random() * this.exitNodes.length)];
+    log.verbose("Selected exit node", this.exitNode);
     return this.exitNodes;
   }
 
@@ -173,7 +204,7 @@ export default class SDK {
 
     match.resolve(response);
     this.reliabilityScore.addMetric(
-      this.tempOps.entryNodePeerId,
+      match.request.entryNodeDestination,
       match.request.id,
       "success"
     );
@@ -188,11 +219,7 @@ export default class SDK {
    * @param req Request received from cache module.
    */
   private onRequestRemoval(req: Request): void {
-    this.reliabilityScore.addMetric(
-      this.tempOps.entryNodePeerId,
-      req.id,
-      "failed"
-    );
+    this.reliabilityScore.addMetric(req.entryNodeDestination, req.id, "failed");
     log.normal("request %s expired", req.id);
   }
 
@@ -202,7 +229,6 @@ export default class SDK {
   public async start(): Promise<void> {
     if (this.isReady) return;
 
-    // @ts-expect-error
     if (typeof window === "undefined") {
       log.verbose("Using 'node' RPCh crypto implementation");
       this.crypto =
@@ -218,12 +244,12 @@ export default class SDK {
 
     // check for expires caches every second
     this.interval = setInterval(() => {
-      this.segmentCache.removeExpired(this.timeout);
-      this.requestCache.removeExpired(this.timeout);
+      this.segmentCache.removeExpired(this.ops.timeout);
+      this.requestCache.removeExpired(this.ops.timeout);
     }, 1e3);
 
-    await this.selectEntryNode(this.discoveryPlatformApiEndpoint);
-    await this.selectExitNode(this.discoveryPlatformApiEndpoint);
+    await this.selectEntryNode(this.ops.discoveryPlatformApiEndpoint);
+    await this.selectExitNode(this.ops.discoveryPlatformApiEndpoint);
     this.stopMessageListener = await hoprd.createMessageListener(
       this.entryNode!.apiEndpoint,
       this.entryNode!.apiToken,
@@ -263,9 +289,9 @@ export default class SDK {
       provider,
       body,
       this.entryNode!.peerId,
-      this.exitNodePeerId!,
+      this.exitNode!.peerId,
       this.crypto!.Identity.load_identity(
-        etherUtils.arrayify(this.exitNodePubKey!)
+        etherUtils.arrayify(this.exitNode!.pubKey)
       )
     );
   }
@@ -287,7 +313,7 @@ export default class SDK {
           apiEndpoint: this.entryNode!.apiEndpoint,
           apiToken: this.entryNode!.apiToken,
           message: segment.toString(),
-          destination: this.exitNodePeerId!,
+          destination: this.exitNode!.peerId,
         });
       }
     });

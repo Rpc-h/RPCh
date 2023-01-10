@@ -1,6 +1,6 @@
 import { JsonRpcProvider } from "@ethersproject/providers";
 import { deepCopy } from "@ethersproject/properties";
-import SDK, { type HoprSdkTempOps } from "@rpch/sdk";
+import SDK, { type HoprSdkOps } from "@rpch/sdk";
 import { parseResponse, getResult, createLogger } from "./utils";
 
 const log = createLogger();
@@ -10,14 +10,12 @@ export class RPChProvider extends JsonRpcProvider {
 
   constructor(
     public readonly url: string,
-    hoprSdkTimeout: number,
-    hoprSdkTempOps: HoprSdkTempOps,
+    hoprSdkOps: HoprSdkOps,
     setKeyVal: (key: string, val: string) => Promise<any>,
     getKeyVal: (key: string) => Promise<string | undefined>
   ) {
     super(url);
-    this.sdk = new SDK(hoprSdkTimeout, hoprSdkTempOps, setKeyVal, getKeyVal);
-    this.sdk.start().catch((error) => log.error(error));
+    this.sdk = new SDK(hoprSdkOps, setKeyVal, getKeyVal);
   }
 
   public async send(method: string, params: Array<any>): Promise<any> {

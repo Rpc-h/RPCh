@@ -11,6 +11,7 @@ volumes:
   # postgres database
   postgres-data:
 
+
 services:
   postgres-db:
     image: postgres:14.1-alpine
@@ -29,12 +30,18 @@ services:
     depends_on:
       - postgres-db
     restart: unless-stopped
+    ports:
+      - "3010:3010"
+    networks:
+      - default
+      - sandbox-nodes_default
     environment:
       - DEBUG=${DEBUG}
       - SECRET_KEY=${SECRET_KEY}
       - WALLET_PRIV_KEY=${FUNDING_SERVICE_PRIVATE_KEY}
-      - DB_CONNECTION_URL=http://postgres-db:5432
+      - DB_CONNECTION_URL=postgresql://postgres:postgres@postgres-db:5432
       - SMART_CONTRACT_ADDRESS=${SMART_CONTRACT_ADDRESS}
+      - PORT=${FUNDING_SERVICE_PORT}
   discovery-platform:
     build:
       dockerfile: apps/discovery-platform/Dockerfile
@@ -42,9 +49,16 @@ services:
     depends_on:
       - postgres-db
     restart: unless-stopped
+    ports:
+      - "3020:3020"
     environment:
       - DEBUG=${DEBUG}
       - SECRET_KEY=${SECRET_KEY}
-      - DB_CONNECTION_URL=http://postgres-db:5432
-      - FUNDING_SERVICE_URL=http://funding-service:3000
+      - DB_CONNECTION_URL=postgresql://postgres:postgres@postgres-db:5432
+      - FUNDING_SERVICE_URL=http://funding-service:3010
       - HOPRD_ACCESS_TOKEN=${HOPRD_API_TOKEN}
+      - PORT=${DISCOVERY_PLATFORM_PORT}
+
+networks:
+  sandbox-nodes_default:
+    external: true

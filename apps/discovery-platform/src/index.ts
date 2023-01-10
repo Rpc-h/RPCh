@@ -1,12 +1,15 @@
 import { DBInstance } from "./db";
 import { entryServer } from "./entry-server";
 import { FundingServiceApi } from "./funding-service-api";
+import { createLogger } from "./utils";
 import pgp from "pg-promise";
 import fs from "fs";
 
+const log = createLogger();
+
 const {
   // Port that server will listen for requests
-  PORT = 3000,
+  PORT = 3020,
   // Api endpoint used for completing funding requests of registered nodes
   FUNDING_SERVICE_URL,
   // Access token used to connect to hoprd entry node
@@ -35,7 +38,9 @@ const main = () => {
   const pgInstance = pgp();
   const connectionString: string = DB_CONNECTION_URL;
   // create table if the table does not exist
-  const dbInstance = pgInstance({ connectionString });
+  const dbInstance = pgInstance({
+    connectionString,
+  });
 
   start({
     accessToken: HOPRD_ACCESS_TOKEN,
@@ -73,7 +78,10 @@ const start = async (ops: {
     accessToken: ops.accessToken,
     fundingServiceApi: fundingServiceApi,
   });
-  server.listen(PORT);
+  // start listening at PORT for requests
+  server.listen(Number(PORT), "0.0.0.0", () => {
+    log.normal("entry server is up");
+  });
 
   // keep track of all pending funding requests to update status or retry
   const checkForPendingRequests = setTimeout(async () => {

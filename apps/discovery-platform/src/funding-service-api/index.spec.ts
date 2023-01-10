@@ -29,6 +29,8 @@ const createMockNode = (peerId?: string) =>
     honesty_score: 0,
     status: "FRESH",
     total_amount_funded: 0,
+    hoprd_api_endpoint: "localhost",
+    hoprd_api_port: 5000,
   } as QueryRegisteredNode);
 
 describe("test funding service api class", function () {

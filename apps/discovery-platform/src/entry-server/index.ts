@@ -12,9 +12,11 @@ import {
   getRewardForNode,
 } from "../registered-node";
 import { CreateRegisteredNode } from "../registered-node/dto";
+import { createLogger } from "../utils";
 
 const app = express();
 const apiRouter = express.Router();
+const log = createLogger(["entry-server"]);
 
 export const doesClientHaveQuota = async (
   db: DBInstance,
@@ -36,6 +38,7 @@ export const entryServer = (ops: {
   apiRouter.use(express.json());
 
   apiRouter.post("/node/register", async (req, res) => {
+    log.verbose("/node/register", req.body);
     const node = req.body as CreateRegisteredNode;
     const registered = await createRegisteredNode(ops.db, node);
     return res.json({ body: registered });
@@ -73,21 +76,26 @@ export const entryServer = (ops: {
     return res.json({ quota: createdQuota });
   });
 
-  apiRouter.get("/request/entry-node", async (req, res) => {
+  apiRouter.post("/request/entry-node", async (req, res) => {
     const { client } = req.body;
+    log.verbose("requesting entry node for client", client);
+    if (typeof client !== "string") throw Error("Client is not a string");
+
     // check if client has enough quota
     const doesClientHaveQuotaResponse = await doesClientHaveQuota(
       ops.db,
       client,
       ops.baseQuota
     );
-    if (!doesClientHaveQuotaResponse) {
+    // TODO: reenable
+    if (false && !doesClientHaveQuotaResponse) {
       return res.status(400).json({
         body: "Client does not have enough quota",
       });
     }
     // choose selected entry node
     const selectedNode = await getEligibleNode(ops.db);
+    log.verbose("selected entry node", selectedNode);
     if (!selectedNode) {
       return res.json({ body: "Could not find eligible node" });
     }

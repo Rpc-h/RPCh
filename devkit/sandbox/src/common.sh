@@ -5,8 +5,8 @@ DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
 
 # stop sandbox
 stop() {
-    docker-compose --file $DIR/nodes-docker-compose.yml down;
-    docker-compose --file $DIR/central-docker-compose.yml down;
+    docker-compose -f $DIR/nodes-docker-compose.yml -p sandbox-nodes down;
+    docker-compose -f $DIR/central-docker-compose.yml -p sandbox-central down;
     exit;
 }
 
@@ -88,10 +88,23 @@ start() {
 
     echo "Done 'nodes-docker-compose'"
 
+    # extract public keys
+    exit_node_pub_key_1=$(echo "$logs1" | grep "Running exit node with public key" | awk '{print $9}')
+    exit_node_pub_key_2=$(echo "$logs2" | grep "Running exit node with public key" | awk '{print $9}')
+    exit_node_pub_key_3=$(echo "$logs3" | grep "Running exit node with public key" | awk '{print $9}')
+    exit_node_pub_key_4=$(echo "$logs4" | grep "Running exit node with public key" | awk '{print $9}')
+    exit_node_pub_key_5=$(echo "$logs5" | grep "Running exit node with public key" | awk '{print $9}')
+
+    echo "Extracted public keys"
+    echo "node1=$exit_node_pub_key_1"
+    echo "node2=$exit_node_pub_key_2"
+    echo "node3=$exit_node_pub_key_3"
+    echo "node4=$exit_node_pub_key_4"
+    echo "node5=$exit_node_pub_key_5"
+
     # fund funding-service wallet
     echo "Funding funding-service wallet"
     hoprTokenAddress=$( \
-        RPC_PROVIDER=http://localhost:8545 FUNDING_HOPRD_API_ENDPOINT=http://localhost:13301 \
         NODE_ENV=production FUNDING_HOPRD_API_TOKEN=${HOPRD_API_TOKEN} \
         npx ts-node $DIR/fund-funding-service.ts
     )
@@ -102,6 +115,19 @@ start() {
         docker compose -f $DIR/central-docker-compose.yml -p sandbox-central \
         up -d --remove-orphans --build --force-recreate
     echo "Done 'central-docker-compose'"
+
+    # register nodes
+    echo "Registering nodes to discovery-platform"
+    hoprTokenAddress=$( \
+        NODE_ENV=production HOPRD_API_TOKEN=${HOPRD_API_TOKEN} \
+        EXIT_NODE_PUB_KEY_1=${exit_node_pub_key_1} \
+        EXIT_NODE_PUB_KEY_2=${exit_node_pub_key_2} \
+        EXIT_NODE_PUB_KEY_3=${exit_node_pub_key_3} \
+        EXIT_NODE_PUB_KEY_4=${exit_node_pub_key_4} \
+        EXIT_NODE_PUB_KEY_5=${exit_node_pub_key_5} \
+        npx ts-node $DIR/register-nodes.ts
+    )
+    echo "Registered nodes to discovery-platform"
 
     echo "Sandbox is ready!"
 }

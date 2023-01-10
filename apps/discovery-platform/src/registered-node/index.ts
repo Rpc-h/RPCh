@@ -1,5 +1,8 @@
 import * as db from "../db";
 import { CreateRegisteredNode, QueryRegisteredNode } from "./dto";
+import { createLogger } from "../utils";
+
+const log = createLogger(["registered-node"]);
 
 /**
  * Get all registered nodes
@@ -22,14 +25,18 @@ export const createRegisteredNode = async (
   dbInstance: db.DBInstance,
   node: CreateRegisteredNode
 ): Promise<boolean> => {
-  const newNode = {
+  const newNode: Omit<QueryRegisteredNode, "created_at" | "updated_at"> = {
     honesty_score: 0,
     total_amount_funded: 0,
     status: "FRESH",
     chain_id: Number(node.chainId),
+    hoprd_api_endpoint: node.hoprdApiEndpoint,
+    hoprd_api_port: node.hoprdApiPort,
+    exit_node_pub_key: node.exit_node_pub_key,
     has_exit_node: Boolean(node.hasExitNode),
     id: node.peerId,
-  } as QueryRegisteredNode;
+  };
+  log.verbose("Saving new registered node", newNode);
 
   return await db.saveRegisteredNode(dbInstance, newNode);
 };
@@ -89,10 +96,8 @@ export const getEligibleNode = async (
 ): Promise<QueryRegisteredNode | undefined> => {
   const allNodes = await getRegisteredNodes(dbInstance);
   // choose selected entry node
-  const eligibleNodes = allNodes.filter((node) => node.status === "READY");
-  const selectedNode = eligibleNodes.at(
-    Math.floor(Math.random() * eligibleNodes.length)
-  );
+  // const eligibleNodes = allNodes.filter((node) => node.status === "READY");
+  const selectedNode = allNodes.at(Math.floor(Math.random() * allNodes.length));
   // TODO: get access token of selected node
   return selectedNode;
 };
